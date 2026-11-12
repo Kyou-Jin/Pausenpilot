@@ -72,3 +72,7 @@ python tools/screenshots.py shots dark # Screenshots aller Ansichten
 Ohne Installation testen, mit eigenem Datenordner: Umgebungsvariable `PAUSENPILOT_DATA` setzen.
 
 </details>
+
+## Lizenz
+
+[MIT](LICENSE) – frei nutzbar, veränderbar und weitergebbar, solange der Lizenzhinweis erhalten bleibt.
