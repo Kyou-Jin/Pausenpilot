@@ -1,0 +1,16 @@
+# Build
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Persönliche Daten (Verlauf, Einstellungen)
+Pausenpilot-Daten/
+
+# Lokale Arbeitsdateien
+shots/
+.claude/
