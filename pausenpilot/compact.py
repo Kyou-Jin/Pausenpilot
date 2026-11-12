@@ -127,6 +127,7 @@ class CompactWindow(QWidget):
     moved = Signal(QPoint)
     quit_requested = Signal()
     hide_requested = Signal()
+    queued_done = Signal(str)      # wartende Erinnerung (z. B. wegen Vollbild) direkt erledigt
 
     def __init__(self, on_top: bool = True):
         super().__init__(None, self._flags(on_top))
@@ -173,6 +174,14 @@ class CompactWindow(QWidget):
         row.addLayout(tv, 1)
         self.ring = ProgressRing(44, 4)
         row.addWidget(self.ring)
+        self.done_btn = QPushButton("✓")
+        self.done_btn.setObjectName("compactCheck")
+        self.done_btn.setFixedSize(44, 44)
+        self.done_btn.setCursor(Qt.PointingHandCursor)
+        self.done_btn.clicked.connect(self._done_clicked)
+        self.done_btn.hide()
+        self._queued_tid = None
+        row.addWidget(self.done_btn)
         self.end_pause = QPushButton("Beenden")
         self.end_pause.setObjectName("compactPrimary")
         self.end_pause.setCursor(Qt.PointingHandCursor)
@@ -216,6 +225,21 @@ class CompactWindow(QWidget):
         self._last_button = time.monotonic()
         self.pause_requested.emit(0)
 
+    def _done_clicked(self):
+        self._last_button = time.monotonic()
+        if self._queued_tid:
+            self.queued_done.emit(self._queued_tid)
+
+    def _set_done_btn(self, tid, tip: str = ""):
+        """Knopf „✓ Erledigt“ statt Ring, solange eine Erinnerung nur wartet (z. B. Vollbild)."""
+        self._queued_tid = tid
+        self.done_btn.setToolTip(tip)
+        show = tid is not None
+        if self.done_btn.isHidden() == show or self.ring.isHidden() != (show or self._paused):
+            self.done_btn.setVisible(show)
+            self.ring.setVisible(not show and not self._paused)
+            self._fit()
+
     def _resume_clicked(self):
         self._last_button = time.monotonic()
         self.resume_requested.emit()
@@ -250,7 +274,7 @@ class CompactWindow(QWidget):
         self.shadow.setColor(QColor(0, 0, 0, 100 if theme.P.get("is_dark") else 45))
 
     # ------------------------------------------------------------------ Inhalt
-    def update_status(self, sched, now: datetime, entries, pauses, summary, away: bool):
+    def update_status(self, sched, now: datetime, entries, pauses, summary, away: bool, held: bool = False):
         paused = sched.paused_until is not None
         if paused != self._layout_paused:
             self._paused = self._layout_paused = paused
@@ -262,12 +286,13 @@ class CompactWindow(QWidget):
             self._fit()
 
         if paused:
+            self._set_done_btn(None)
             since = sched.paused_since or now
             rest = "" if sched.pause_open else f" · bis {sched.paused_until:%H:%M}"
             self._set_texts(f"Pause seit {since:%H:%M}",
                             f"{fmt_elapsed((now - since).total_seconds())}{rest} · Erinnerungen ruhen")
         else:
-            self._show_next(sched, now, away)
+            self._show_next(sched, now, away, held)
 
         # Mini-Zeitstrahl + Medaille
         w = schedule.window_for(sched.settings, now.date())
@@ -297,7 +322,7 @@ class CompactWindow(QWidget):
                 txt += f'<span style="color:{P["faint"]}"> · noch {nxt[1]} bis {MEDAL_NAMES[nxt[0]]}</span>'
         self.f_medal.setText(txt)
 
-    def _show_next(self, sched, now: datetime, away: bool):
+    def _show_next(self, sched, now: datetime, away: bool, held: bool = False):
         items = []
         for t in sched.timers:
             r = sched.rt.get(t.id)
@@ -305,12 +330,25 @@ class CompactWindow(QWidget):
                 items.append((r.due, t, r))
         items.sort(key=lambda x: x[0])
         if not items:
+            self._set_done_btn(None)
             self.bubble.set("⭐", theme.P["faint"])
             self._set_texts("Keine anstehende Erinnerung", "Zeiten oder Erinnerungen prüfen")
             self.ring.setValue(0)
             self.ring.setText("–")
             return
         due, t, r = items[0]
+        waiting = [x for x in sched.queue if x != sched.active]
+        if waiting and sched.active is None:
+            # Erinnerung wartet (Vollbild/Präsentation) – trotzdem schon abhakbar
+            t = sched.timer(waiting[0]) or t
+            self.bubble.set(t.icon, t.color)
+            more = f" · +{len(waiting) - 1} weitere" if len(waiting) > 1 else ""
+            why = "Wartet (Vollbild)" if held else "kommt gleich"
+            self._set_texts(t.name, why + more)
+            self._set_done_btn(t.id, f"„{t.name}“ schon gemacht? Klick trägt sie als erledigt ein."
+                               + (" Sie kommt, sobald das Vollbild endet." if held else ""))
+            return
+        self._set_done_btn(None)
         self.bubble.set(t.icon, t.color)
         self.ring.setIcon("")
         self.ring.setColor(t.color)

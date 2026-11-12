@@ -100,6 +100,7 @@ class Controller(QObject):
         self.compact.expand_requested.connect(lambda: self.show_window(0))
         self.compact.pause_requested.connect(self.pause)
         self.compact.resume_requested.connect(self.resume)
+        self.compact.queued_done.connect(self._queued_done)
         self.compact.moved.connect(self._compact_moved)
         self.compact.hide_requested.connect(self.hide_compact)
         self.compact.quit_requested.connect(self.quit)
@@ -331,7 +332,9 @@ class Controller(QObject):
         m = QMenu()
         self.tray_next = m.addAction("–")
         self.tray_next.setEnabled(False)
-        m.addSeparator()
+        self._tray_sep = m.addSeparator()
+        self._tray_queue_actions = []
+        m.aboutToShow.connect(self._fill_tray_queue)
         m.addAction("Öffnen", lambda: self.show_window(0))
         m.addAction("Kalender", lambda: self.show_window(1))
         m.addAction("Kompaktansicht", self.enter_compact)
@@ -347,6 +350,19 @@ class Controller(QObject):
         self.tray.activated.connect(self._tray_activated)
         self.tray.show()
         self._tray_paused_icon = None
+
+    def _fill_tray_queue(self):
+        """Wartende Erinnerungen (z. B. wegen Vollbild) direkt im Menü abhaken."""
+        for a in self._tray_queue_actions:
+            self.tray_menu.removeAction(a)
+        self._tray_queue_actions = []
+        for tid in self.sched.queue:
+            t = self.sched.timer(tid)
+            if t and tid != self.sched.active:
+                a = QAction(f"✓ Erledigt: {t.name}", self.tray_menu)
+                a.triggered.connect(lambda _=False, x=tid: self._queued_done(x))
+                self.tray_menu.insertAction(self._tray_sep, a)
+                self._tray_queue_actions.append(a)
 
     def _tray_activated(self, reason):
         if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
@@ -437,7 +453,8 @@ class Controller(QObject):
             if not (self.alarm.isVisible() and self.alarm.timer is not None) and not self.compact.isVisible():
                 self.compact.show()
             if self.compact.isVisible():
-                self.compact.update_status(self.sched, now, self._entries, self._pauses, self._summary, self._away)
+                self.compact.update_status(self.sched, now, self._entries, self._pauses, self._summary, self._away,
+                                           self._held)
         else:
             self._auto_compact_check()
         if self.window.isVisible():
@@ -543,6 +560,9 @@ class Controller(QObject):
             self.alarm._sound("click")
         self._push_waiting()
         self._after_action()
+        if self.compact.isVisible():
+            self.compact.update_status(self.sched, datetime.now(), self._entries, self._pauses, self._summary,
+                                       self._away, getattr(self, "_held", False))
 
     def _alarm_snoozed(self, tid: str, minutes: int):
         t = self.sched.timer(tid)

@@ -325,6 +325,11 @@ QPushButton#compactDone {{
     border: 1px solid {p['success']}; color: {p['success']}; background: {p['surface2']};
 }}
 QPushButton#compactDone:hover {{ background: {p['surface3']}; }}
+QPushButton#compactCheck {{
+    border-radius: 22px; font-size: 15pt; font-weight: 700; padding: 0;
+    border: 2px solid {p['success']}; color: {p['success']}; background: {rgba(p['success'], 0.12)};
+}}
+QPushButton#compactCheck:hover {{ background: {p['success']}; color: {p['surface']}; }}
 #alarmTitle {{ font-size: 17pt; font-weight: 600; }}
 #alarmDesc {{ color: {p['muted']}; font-size: 10.5pt; }}
 #alarmMeta {{ color: {p['faint']}; font-size: 9pt; }}
