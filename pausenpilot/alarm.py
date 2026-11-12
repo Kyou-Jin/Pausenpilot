@@ -252,6 +252,10 @@ class AlarmWindow(QWidget):
         self.r_tip = label("", "alarmMeta", wrap=True)
         self.r_tip.setAlignment(Qt.AlignHCenter)
         v.addWidget(self.r_tip)
+        v.addSpacing(10)
+        self.r_queue = label("", "queueBadge")
+        self.r_queue.hide()
+        v.addWidget(self.r_queue, 0, Qt.AlignHCenter)
         v.addSpacing(18)
         row = QHBoxLayout()
         row.setSpacing(10)
@@ -349,6 +353,9 @@ class AlarmWindow(QWidget):
         self.c_r_tip = label("", "compactSub", wrap=True)
         tv.addWidget(self.c_r_title)
         tv.addWidget(self.c_r_tip)
+        self.c_r_queue = label("", "compactSub")
+        self.c_r_queue.hide()
+        tv.addWidget(self.c_r_queue)
         top.addLayout(tv, 1)
         v.addLayout(top)
         row = QHBoxLayout()
@@ -446,8 +453,23 @@ class AlarmWindow(QWidget):
         self._present(screen_name)
         self._sound("click")
 
-    def update_waiting(self, waiting: int):
+    def update_waiting(self, waiting: int, names=()):
         txt = waiting_text(waiting) if waiting > 0 else ""
+        # Während des Countdowns: was kommt direkt danach?
+        if names:
+            first = names[0]
+            more = f" (+{len(names) - 1})" if len(names) > 1 else ""
+            run_txt = f"⏳ Danach wartet: {first}{more}"
+        else:
+            run_txt = ""
+        for lb in (self.r_queue, self.c_r_queue):
+            if lb.text() != run_txt or lb.isVisible() != bool(run_txt):
+                lb.setText(run_txt)
+                lb.setToolTip("Wurde während dieses Countdowns fällig und kommt direkt im Anschluss:\n"
+                              + "\n".join(names) if names else "")
+                lb.setVisible(bool(run_txt))
+                if self.isVisible() and self._page == PAGE_RUN:
+                    self._relayout()
         if hasattr(self, "_c_meta_base"):
             self.c_meta.setText(self._c_meta_base + (f" · {txt}" if txt else ""))
         if self.p_queue.text() == txt and self.p_queue.isVisible() == (waiting > 0):

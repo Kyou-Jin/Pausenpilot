@@ -8,7 +8,7 @@ from PySide6.QtGui import QAction, QCursor
 from PySide6.QtWidgets import (QButtonGroup, QFrame, QHBoxLayout, QLabel, QMainWindow, QMenu, QPushButton,
                                QScrollArea, QStackedWidget, QVBoxLayout, QWidget)
 
-from . import APP_NAME, APP_VERSION, schedule, theme
+from . import APP_NAME, APP_VERSION, conflicts, schedule, theme
 from .models import (MAX_TIMERS, MEDAL_MIN_ENTRIES, MEDAL_NAMES, MONTHS, WEEKDAYS, WEEKDAYS_SHORT, TimerConfig,
                      day_rating, fmt_duration, fmt_interval, next_medal)
 from .schedule import PHASE_ALARM, PHASE_QUEUED, PHASE_RUNNING
@@ -187,6 +187,7 @@ class TimersPage(QWidget):
     resume_requested = Signal()
     compact_requested = Signal()
     replan_requested = Signal()
+    conflict_fix_requested = Signal(str, str)   # Timer-ID, neue Startzeit "HH:MM"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -310,6 +311,39 @@ class TimersPage(QWidget):
         self.empty.setAlignment(Qt.AlignCenter)
         self.empty.hide()
         root.addWidget(self.empty)
+        # Überschneidungen im heutigen Plan
+        self.clash_card = QFrame()
+        self.clash_card.setObjectName("card")
+        cv = QVBoxLayout(self.clash_card)
+        cv.setContentsMargins(18, 14, 18, 14)
+        cv.setSpacing(6)
+        self.clash_head = QLabel()
+        self.clash_head.setTextFormat(Qt.RichText)
+        cv.addWidget(self.clash_head)
+        self.clash_list = QLabel()
+        self.clash_list.setObjectName("muted")
+        self.clash_list.setTextFormat(Qt.RichText)
+        self.clash_list.setWordWrap(True)
+        cv.addWidget(self.clash_list)
+        crow = QHBoxLayout()
+        crow.setSpacing(12)
+        self.clash_tip = QLabel()
+        self.clash_tip.setTextFormat(Qt.RichText)
+        self.clash_tip.setWordWrap(True)
+        crow.addWidget(self.clash_tip, 1)
+        self.clash_btn = QPushButton("Vorschlag übernehmen")
+        self.clash_btn.setCursor(Qt.PointingHandCursor)
+        self.clash_btn.clicked.connect(self._apply_clash_fix)
+        crow.addWidget(self.clash_btn, 0, Qt.AlignVCenter)
+        cv.addLayout(crow)
+        self.clash_card.hide()
+        root.addWidget(self.clash_card)
+        root.addSpacing(10)
+        self._clash_key = None
+        self._clash_data = ([], None)
+        self._clash_shown = None
+        self._suggestion = None
+
         self.hint = label("Tipp: Unterschiedliche Startzeiten verhindern, dass alle Erinnerungen "
                           "gleichzeitig kommen.", "faint", wrap=True)
         foot = QHBoxLayout()
@@ -343,6 +377,64 @@ class TimersPage(QWidget):
         self.hint.setText("Zeiten geändert – mit „Zeitplan aktualisieren“ gilt das neue Raster schon für heute."
                           if on else "Tipp: Unterschiedliche Startzeiten verhindern, dass alle Erinnerungen "
                                      "gleichzeitig kommen.")
+
+    def _apply_clash_fix(self):
+        if self._suggestion:
+            self.conflict_fix_requested.emit(self._suggestion.timer.id, self._suggestion.new_start)
+
+    def _update_clashes(self, sched, now: datetime):
+        """Karte „Überschneidungen heute“ – Berechnung nur, wenn sich Erinnerungen/Zeiten ändern."""
+        today = now.date()
+        key = (today, tuple((t.id, t.enabled, t.first_start, t.interval_min, t.duration_sec, t.name, t.icon)
+                            for t in sched.timers),
+               tuple((d.enabled, d.start, d.end) for d in sched.settings.days))
+        if key != self._clash_key:
+            self._clash_key = key
+            self._clash_data = (conflicts.find_clashes(sched.timers, sched.settings, today),
+                                conflicts.suggest(sched.timers, sched.settings, today))
+        clashes, sug = self._clash_data
+        upcoming = [c for c in clashes
+                    if c.first_at + timedelta(seconds=max(60, c.first.duration_sec)) > now]
+        shown = (tuple((c.first.id, c.first_at, c.second.id, c.second_at) for c in upcoming[:3]), len(upcoming),
+                 (sug.timer.id, sug.new_start, sug.after) if sug else None, theme.P.get("is_dark"))
+        if shown == self._clash_shown:
+            return
+        self._clash_shown = shown
+        self._suggestion = sug
+        if not upcoming:
+            self.clash_card.hide()
+            return
+        P = theme.P
+        n = len(upcoming)
+        self.clash_head.setText(
+            f'<span style="color:{P["warn"]}; font-weight:600">⚠ {n} '
+            f'{"Überschneidung" if n == 1 else "Überschneidungen"} heute</span>'
+            f'<span style="color:{P["faint"]}"> · eine Erinnerung wird fällig, während eine andere läuft – '
+            f'sie kommt dann direkt danach</span>')
+        lines = []
+        for c in upcoming[:3]:
+            dur = c.first.duration_sec
+            what = (f"{c.first.icon} {c.first.name} ({fmt_duration(dur)})" if dur >= 60
+                    else f"{c.first.icon} {c.first.name}")
+            same = abs((c.second_at - c.first_at).total_seconds()) < 60
+            lines.append(f"<b>{c.first_at:%H:%M}</b> {what} – "
+                         + (f"gleichzeitig {c.second.icon} {c.second.name}" if same
+                            else f"um {c.second_at:%H:%M} wartet {c.second.icon} {c.second.name}"))
+        if n > 3:
+            lines.append(f'<span style="color:{P["faint"]}">… und {n - 3} weitere</span>')
+        self.clash_list.setText("<br>".join(lines))
+        if sug:
+            res = "keine Überschneidungen mehr" if sug.after == 0 else f"nur noch {sug.after} statt {sug.before}"
+            self.clash_tip.setText(
+                f'<span style="color:{P["text"]}">💡 Tipp: Startzeit von <b>„{sug.timer.name}“</b> von '
+                f'{sug.timer.first_start} auf <b>{sug.new_start}</b> setzen</span>'
+                f'<span style="color:{P["muted"]}"> → {res} (ganzer Tag).</span>')
+            self.clash_btn.show()
+        else:
+            self.clash_tip.setText(f'<span style="color:{P["muted"]}">💡 Tipp: Startzeiten um ein paar Minuten '
+                                   f'versetzen oder Intervalle anpassen.</span>')
+            self.clash_btn.hide()
+        self.clash_card.show()
 
     def _pause_clicked(self):
         if self._paused:
@@ -411,6 +503,7 @@ class TimersPage(QWidget):
         self.subtitle.setText(when)
         self.timeline.set_state(sched, entries, pauses, now, aways)
         self._set_replan(bool(getattr(sched, "plan_dirty", False)) and sched.paused_until is None)
+        self._update_clashes(sched, now)
         self._update_medal(summary)
         if getattr(self, "_legend_dark", None) != theme.P.get("is_dark"):
             self._legend_dark = theme.P.get("is_dark")

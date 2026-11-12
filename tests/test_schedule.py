@@ -207,6 +207,27 @@ def test_changed_day_window_marks_plan_dirty():
     assert sc.plan_dirty
 
 
+def test_clashes_and_suggestion():
+    from pausenpilot import conflicts as C
+    eyes = TimerConfig(name="Augen", interval_min=20, first_start="08:00", duration_sec=20)
+    desk = TimerConfig(name="Schreibtisch", interval_min=60, first_start="09:00", duration_sec=900)
+    st = settings()
+    cl = C.find_clashes([eyes, desk], st, MON.date())
+    # 09:00 gleichzeitig + 09:00er-Augen liegt im Stehen; je Stunde: 09:00 (gleich) → zählt einmal
+    assert cl and all(c.first.id == desk.id for c in cl)
+    assert cl[0].first_at == at(9) and cl[0].second_at == at(9)
+    sug = C.suggest([eyes, desk], st, MON.date())
+    assert sug and sug.after < sug.before
+    fixed = [eyes, TimerConfig(**{**desk.__dict__, "first_start": sug.new_start})] if sug.timer.id == desk.id \
+        else [TimerConfig(**{**eyes.__dict__, "first_start": sug.new_start}), desk]
+    assert len(C.find_clashes(fixed, st, MON.date())) == sug.after
+    # ohne Dauer und zu verschiedenen Zeiten: keine Überschneidung
+    water = TimerConfig(name="Wasser", interval_min=60, first_start="08:10", duration_sec=0)
+    assert C.find_clashes([water, TimerConfig(name="x", interval_min=60, first_start="08:40", duration_sec=0)],
+                          st, MON.date()) == []
+    assert C.suggest([water], st, MON.date()) is None
+
+
 def test_sleep_gap_reschedules():
     a = T(20)
     sc = make([a], at(7, 50))

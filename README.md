@@ -34,6 +34,8 @@ Pausenpilot läuft dann im Infobereich (unten rechts neben der Uhr) weiter.
 | 🔒 **Erkennt Sperre & Abwesenheit** | Bei Win+L, Standby oder wenn du weg bist, staut sich nichts. Die Zeit steht im Kalender, ohne Minuspunkte |
 | ✅ **Ehrlich zählen** | Eine Erinnerung gilt erst als erledigt, wenn du es bestätigst. Verschieben (+5/+10/+15 Min) wird gezählt |
 | 📊 **Zeitstrahl „Dein Tag“** | Alles auf einen Blick: geplant, erledigt, übersprungen, Pausen |
+| ⚠ **Überschneidungen erkennen** | Zeigt, wo sich Erinnerungen in die Quere kommen – mit Vorschlag zum Verschieben per Klick |
+| 🔄 **Zeitplan aktualisieren** | Geänderte Startzeiten gelten auf Knopfdruck schon für heute |
 | 🏅 **Medaillen** | Bronze, Silber, Gold oder Platin für jeden Tag – und einen Daumen nach unten, wenn's mal nichts war |
 | 📅 **Kalender** | Was du wann gemacht hast, mit Pausen. Export als CSV |
 | ▣ **Kompaktmodus** | Kleines Fenster in der Ecke, schaltet sich auf Wunsch von selbst ein |

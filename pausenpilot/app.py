@@ -76,6 +76,7 @@ class Controller(QObject):
         self.timers_page.resume_requested.connect(self.resume)
         self.timers_page.compact_requested.connect(self.enter_compact)
         self.timers_page.replan_requested.connect(self.replan)
+        self.timers_page.conflict_fix_requested.connect(self.apply_conflict_fix)
         self.settings_page.changed.connect(self.settings_changed)
         self.settings_page.theme_changed.connect(self.apply_theme_live)
         self.settings_page.autostart_changed.connect(self.set_autostart)
@@ -426,7 +427,8 @@ class Controller(QObject):
                 changed = True
         self._away = self.sched.away_since is not None
         if self.alarm.isVisible() and self.sched.active:
-            self.alarm.update_waiting(len(self.sched.queue))
+            self.alarm.update_waiting(len(self.sched.queue),
+                                      [t.name for tid in self.sched.queue if (t := self.sched.timer(tid))])
         if now.date() != self._today:
             self._today = now.date()
             self._refresh_stats()
@@ -617,6 +619,16 @@ class Controller(QObject):
         self.save_config()
         self.save_state()
         self.tick()
+
+    def apply_conflict_fix(self, tid: str, new_start: str):
+        """Vorschlag aus „Überschneidungen heute“: Startzeit einer Erinnerung verschieben."""
+        import dataclasses
+        for i, t in enumerate(self.timers):
+            if t.id == tid:
+                self.timers[i] = dataclasses.replace(t, first_start=new_start)
+                self._config_changed({tid})
+                self.timers_page.hint.setText(f"„{t.name}“ startet jetzt ab {new_start} Uhr.")
+                return
 
     def replan(self):
         """Knopf „Zeitplan aktualisieren“: Raster aus Startzeit/Intervall/aktiver Zeit ab jetzt anwenden."""
