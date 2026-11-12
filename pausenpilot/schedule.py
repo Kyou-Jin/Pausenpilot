@@ -365,6 +365,22 @@ class Scheduler:
         self.hold_until = now + self.HOLD
         return snoozes, planned
 
+    def complete_queued(self, tid: str, now: datetime) -> tuple[int, datetime | None] | None:
+        """Wartende Erinnerung (in der Schlange) nebenbei erledigt – die aktive läuft ungestört weiter."""
+        if tid not in self.queue or tid == self.active:
+            return None
+        t = self.timer(tid)
+        r = self.rt.get(tid)
+        self.queue.remove(tid)
+        if not t or not r:
+            return None
+        snoozes, planned = r.snoozes, r.planned
+        r.snoozes = 0
+        r.phase = PHASE_WAITING
+        r.due = after_completion(t, self.settings, now) if t.enabled else None
+        r.planned = r.due
+        return snoozes, planned
+
     def snooze(self, tid: str, minutes: int, now: datetime) -> int:
         r = self.rt.get(tid)
         if not r:

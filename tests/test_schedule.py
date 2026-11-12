@@ -97,6 +97,22 @@ def test_alarm_and_queue_and_complete():
     assert ev and ev[0][0] == "alarm" and ev[0][1] != first
 
 
+def test_complete_queued_keeps_active_running():
+    a, b = T(20, "08:00"), T(60, "08:00")
+    sc = make([a, b], at(7, 59, 59))
+    first = sc.tick(at(8))[0][1]
+    sc.start(first)
+    other = sc.queue[0]
+    snoozes, planned = sc.complete_queued(other, at(8, 2))
+    assert planned == at(8) and snoozes == 0
+    assert sc.queue == [] and sc.active == first
+    assert sc.rt[first].phase == S.PHASE_RUNNING
+    assert sc.rt[other].due > at(8, 2)
+    assert sc.complete_queued(first, at(8, 2)) is None   # aktive nicht über diesen Weg
+    sc.tick(at(8, 1)), sc.tick(at(8, 2))
+    assert sc.tick(at(8, 2, 30)) == [] and sc.active == first
+
+
 def test_snooze_counts_and_reschedules():
     a = T(20)
     sc = make([a], at(7, 59))

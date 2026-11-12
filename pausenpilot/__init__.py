@@ -1,2 +1,2 @@
 APP_NAME = "Pausenpilot"
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.1"

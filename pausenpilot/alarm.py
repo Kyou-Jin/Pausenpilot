@@ -90,6 +90,7 @@ class AlarmWindow(QWidget):
     snoozed = Signal(str, int)
     skipped = Signal(str)
     run_cancelled = Signal(str)
+    queued_done = Signal(str)      # wartende Erinnerung schon nebenbei erledigt
     moved = Signal(QPoint, bool)   # neue Position (Kartenmitte bzw. -ecke im Kompaktformat), kompakt?
 
     def __init__(self, sound_cfg):
@@ -253,9 +254,18 @@ class AlarmWindow(QWidget):
         self.r_tip.setAlignment(Qt.AlignHCenter)
         v.addWidget(self.r_tip)
         v.addSpacing(10)
+        self.r_queue_row = QWidget()
+        qh = QHBoxLayout(self.r_queue_row)
+        qh.setContentsMargins(0, 0, 0, 0)
+        qh.setSpacing(8)
+        qh.addStretch(1)
         self.r_queue = label("", "queueBadge")
-        self.r_queue.hide()
-        v.addWidget(self.r_queue, 0, Qt.AlignHCenter)
+        qh.addWidget(self.r_queue)
+        self.r_queue_done = self._queue_done_btn("compactDone")
+        qh.addWidget(self.r_queue_done)
+        qh.addStretch(1)
+        self.r_queue_row.hide()
+        v.addWidget(self.r_queue_row)
         v.addSpacing(18)
         row = QHBoxLayout()
         row.setSpacing(10)
@@ -353,11 +363,18 @@ class AlarmWindow(QWidget):
         self.c_r_tip = label("", "compactSub", wrap=True)
         tv.addWidget(self.c_r_title)
         tv.addWidget(self.c_r_tip)
-        self.c_r_queue = label("", "compactSub")
-        self.c_r_queue.hide()
-        tv.addWidget(self.c_r_queue)
         top.addLayout(tv, 1)
         v.addLayout(top)
+        self.c_r_queue_row = QWidget()
+        qh = QHBoxLayout(self.c_r_queue_row)
+        qh.setContentsMargins(0, 0, 0, 0)
+        qh.setSpacing(8)
+        self.c_r_queue = label("", "compactSub")
+        qh.addWidget(self.c_r_queue, 1)
+        self.c_r_queue_done = self._queue_done_btn("compactDone")
+        qh.addWidget(self.c_r_queue_done)
+        self.c_r_queue_row.hide()
+        v.addWidget(self.c_r_queue_row)
         row = QHBoxLayout()
         row.setSpacing(6)
         row.addStretch(1)
@@ -377,6 +394,20 @@ class AlarmWindow(QWidget):
         row.addWidget(fin)
         v.addLayout(row)
         return w
+
+    def _queue_done_btn(self, obj: str) -> QPushButton:
+        b = QPushButton("✓ Erledigt")
+        b.setObjectName(obj)
+        b.setCursor(Qt.PointingHandCursor)
+        b.clicked.connect(self._on_queued_done)
+        return b
+
+    def _on_queued_done(self):
+        """Die nächste wartende Erinnerung nebenbei erledigt (z. B. Wasser trinken beim Stehen)."""
+        ids = getattr(self, "_queue_ids", ())
+        if ids:
+            self._queue_ids = tuple(ids[1:])
+            self.queued_done.emit(ids[0])
 
     def _build_c_done(self) -> QWidget:
         w = QWidget()
@@ -453,21 +484,27 @@ class AlarmWindow(QWidget):
         self._present(screen_name)
         self._sound("click")
 
-    def update_waiting(self, waiting: int, names=()):
+    def update_waiting(self, waiting: int, names=(), ids=()):
         txt = waiting_text(waiting) if waiting > 0 else ""
-        # Während des Countdowns: was kommt direkt danach?
+        self._queue_ids = tuple(ids)
+        # Während des Countdowns: was kommt direkt danach? – und gleich abhakbar
         if names:
-            first = names[0]
+            first = names[0] if len(names[0]) <= 22 else names[0][:21].rstrip() + "…"
             more = f" (+{len(names) - 1})" if len(names) > 1 else ""
-            run_txt = f"⏳ Danach wartet: {first}{more}"
+            run_txt = f"⏳ Danach: {first}{more}"
+            tip = ("Wurde während dieses Countdowns fällig und kommt direkt im Anschluss:\n"
+                   + "\n".join(names))
+            btn_tip = (f"„{names[0]}“ nebenbei schon gemacht? Ohne eigenen Countdown als erledigt eintragen – "
+                       "der Countdown hier läuft weiter.")
         else:
-            run_txt = ""
-        for lb in (self.r_queue, self.c_r_queue):
-            if lb.text() != run_txt or lb.isVisible() != bool(run_txt):
+            run_txt = tip = btn_tip = ""
+        for row, lb, btn in ((self.r_queue_row, self.r_queue, self.r_queue_done),
+                             (self.c_r_queue_row, self.c_r_queue, self.c_r_queue_done)):
+            if lb.text() != run_txt or row.isVisible() != bool(run_txt):
                 lb.setText(run_txt)
-                lb.setToolTip("Wurde während dieses Countdowns fällig und kommt direkt im Anschluss:\n"
-                              + "\n".join(names) if names else "")
-                lb.setVisible(bool(run_txt))
+                lb.setToolTip(tip)
+                btn.setToolTip(btn_tip)
+                row.setVisible(bool(run_txt))
                 if self.isVisible() and self._page == PAGE_RUN:
                     self._relayout()
         if hasattr(self, "_c_meta_base"):

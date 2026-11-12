@@ -92,6 +92,7 @@ class Controller(QObject):
         self.alarm.snoozed.connect(self._alarm_snoozed)
         self.alarm.skipped.connect(self._alarm_skipped)
         self.alarm.run_cancelled.connect(self._alarm_cancelled)
+        self.alarm.queued_done.connect(self._queued_done)
         self.alarm.moved.connect(self._alarm_moved)
 
         self.compact = CompactWindow(self.settings.compact_on_top)
@@ -427,8 +428,7 @@ class Controller(QObject):
                 changed = True
         self._away = self.sched.away_since is not None
         if self.alarm.isVisible() and self.sched.active:
-            self.alarm.update_waiting(len(self.sched.queue),
-                                      [t.name for tid in self.sched.queue if (t := self.sched.timer(tid))])
+            self._push_waiting()
         if now.date() != self._today:
             self._today = now.date()
             self._refresh_stats()
@@ -526,6 +526,22 @@ class Controller(QObject):
             due = self.sched.rt.get(tid).due if self.sched.rt.get(tid) else None
             if due:
                 self.alarm.set_next_hint(f"Nächstes Mal: {fmt_due(due, now)} Uhr")
+        self._after_action()
+
+    def _push_waiting(self):
+        items = [(tid, t.name) for tid in self.sched.queue if (t := self.sched.timer(tid))]
+        self.alarm.update_waiting(len(self.sched.queue), [n for _, n in items], [i for i, _ in items])
+
+    def _queued_done(self, tid: str):
+        """Wartende Erinnerung während eines laufenden Countdowns nebenbei abgehakt."""
+        t = self.sched.timer(tid)
+        res = self.sched.complete_queued(tid, datetime.now())
+        if t and res:
+            snoozes, planned = res
+            self.history.add(t, ACTION_DONE, snoozes=snoozes, minutes=round(t.duration_sec / 60),
+                             planned=planned)
+            self.alarm._sound("click")
+        self._push_waiting()
         self._after_action()
 
     def _alarm_snoozed(self, tid: str, minutes: int):
