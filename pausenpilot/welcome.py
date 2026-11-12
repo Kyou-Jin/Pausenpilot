@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath
-from PySide6.QtWidgets import (QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
+from PySide6.QtWidgets import (QCheckBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
                                QVBoxLayout, QWidget)
 
 from . import APP_NAME, APP_VERSION, theme
@@ -90,7 +90,7 @@ class FeatureTile(QFrame):
 
 
 class WelcomeDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, dont_show: bool = False):
         super().__init__(parent)
         self.setWindowTitle(f"Willkommen bei {APP_NAME}")
         self.setWindowIcon(app_icon())
@@ -111,11 +111,19 @@ class WelcomeDialog(QDialog):
 
         foot = QHBoxLayout()
         foot.setSpacing(12)
+        left = QVBoxLayout()
+        left.setSpacing(6)
+        self.dont_show = QCheckBox("Beim nächsten Start nicht mehr anzeigen")
+        self.dont_show.setCursor(Qt.PointingHandCursor)
+        self.dont_show.setChecked(dont_show)
+        self.dont_show.setToolTip("Den Überblick findest du jederzeit wieder unter Einstellungen.")
+        left.addWidget(self.dont_show)
         info = QLabel(f"Portabel – keine Installation. Alles bleibt im Ordner „Pausenpilot-Daten“ "
                       f"neben der Exe.  ·  Version {APP_VERSION}")
         info.setObjectName("faint")
         info.setWordWrap(True)
-        foot.addWidget(info, 1)
+        left.addWidget(info)
+        foot.addLayout(left, 1)
         go = QPushButton("Los geht's")
         go.setObjectName("primary")
         go.setCursor(Qt.PointingHandCursor)

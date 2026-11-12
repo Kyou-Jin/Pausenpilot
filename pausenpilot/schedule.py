@@ -124,7 +124,8 @@ class Scheduler:
     pause_open: bool = False             # Pause ohne festes Ende (läuft bis „Pause beenden“, spätestens Mitternacht)
     ended_pause: tuple | None = None     # (von, bis) einer Pause, die endete, während das Tool zu war
     away_since: datetime | None = None
-    away_reason: str = ""                # "lock" (gesperrt) | "idle" (keine Eingabe) – solange away_since gesetzt
+    plan_dirty: bool = False             # Zeiten wurden geändert → Zeitplan neu ausrichten möglich
+    away_reason: str = ""              # "lock" (gesperrt) | "idle" (keine Eingabe) – solange away_since gesetzt
     away_missed: list = field(default_factory=list)   # [(tid, Termin)] – während der Abwesenheit fällig gewesen
     last_tick: datetime | None = None
     hold_until: datetime | None = None   # kurze Atempause zwischen zwei Erinnerungen
@@ -435,6 +436,8 @@ class Scheduler:
         old_days = getattr(self, "_days_snapshot", None) or _days_key(self.settings)
         new_days = _days_key(settings)
         changed_days = {i for i in range(7) if old_days[i] != new_days[i]}
+        if changed_days or changed_schedule:
+            self.plan_dirty = True       # Knopf „Zeitplan aktualisieren“ freischalten
         old_ids = set(self.rt)
         self.timers = timers
         self.settings = settings
@@ -478,6 +481,29 @@ class Scheduler:
                         r.planned = fresh
         self._days_snapshot = _days_key(settings)
         return closed
+
+    def realign(self, now: datetime) -> int:
+        """„Zeitplan aktualisieren“: alle wartenden Erinnerungen wieder an ihr Raster legen
+        (Startzeit + Vielfache des Intervalls, innerhalb der aktiven Zeit) – ab jetzt, schon für heute.
+        Offene/laufende Erinnerungen und bewusst verschobene bleiben unverändert. Gibt die Anzahl
+        geänderter Termine zurück."""
+        n = 0
+        for t in self.timers:
+            r = self.rt.get(t.id)
+            if not r or not t.enabled or t.id == self.active or r.snoozes:
+                continue
+            if r.phase not in (PHASE_WAITING, PHASE_QUEUED):
+                continue
+            fresh = next_slot(t, self.settings, now)
+            if t.id in self.queue:
+                self.queue.remove(t.id)
+            r.phase = PHASE_WAITING
+            if fresh != r.due:
+                n += 1
+            r.due = fresh
+            r.planned = fresh
+        self.plan_dirty = False
+        return n
 
     def next_overall(self) -> tuple[TimerConfig, datetime] | None:
         best = None

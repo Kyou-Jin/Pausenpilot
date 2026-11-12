@@ -182,6 +182,31 @@ def test_idle_away_reason_and_sleep_gap_event():
     assert sl and sl[0][3] == "sleep" and sl[0][1] == at(10, 30) and sl[0][4], ev
 
 
+def test_realign_puts_timers_back_on_grid():
+    a, b, c = T(20, "08:00"), T(60, "08:10"), T(60, "08:50")
+    sc = make([a, b, c], at(9, 59))
+    assert not sc.plan_dirty
+    sc.rt[b.id].due = at(10, 13)         # nach „Erledigt“ um 9:13 ab dann gerechnet (nicht im Raster)
+    sc.rt[c.id].due = at(10, 55)
+    sc.rt[c.id].snoozes = 1              # bewusst verschoben → bleibt
+    # Startzeit von a ändern → Zeitplan „veraltet“
+    a2 = TimerConfig(name="t", interval_min=20, first_start="08:05", duration_sec=20)
+    a2.id = a.id
+    sc.apply_config([a2, b, c], sc.settings, at(9, 59), {a.id})
+    assert sc.plan_dirty and sc.rt[a.id].due == at(10, 5)
+    n = sc.realign(at(10, 1))
+    assert sc.rt[a.id].due == at(10, 5) and sc.rt[b.id].due == at(10, 10) and sc.rt[c.id].due == at(10, 55)
+    assert n == 1 and not sc.plan_dirty
+
+
+def test_changed_day_window_marks_plan_dirty():
+    sc = make([T(20)], at(9))
+    st = Settings()
+    st.days[0] = DayWindow(True, "09:30", "17:00")
+    sc.apply_config(sc.timers, st, at(9), set())
+    assert sc.plan_dirty
+
+
 def test_sleep_gap_reschedules():
     a = T(20)
     sc = make([a], at(7, 50))

@@ -248,6 +248,17 @@ def paint_line_icon(p: QPainter, name: str, r: QRectF, color: QColor, width: flo
         p.drawLine(QPointF(box.left(), y + h * .42), QPointF(box.right(), y + h * .42))
         p.drawLine(QPointF(x + w * .34, y + h * .08), QPointF(x + w * .34, y + h * .28))
         p.drawLine(QPointF(x + w * .66, y + h * .08), QPointF(x + w * .66, y + h * .28))
+    elif name == "refresh":
+        arc = r.adjusted(w * .14, h * .14, -w * .14, -h * .14)
+        p.drawArc(arc, 60 * 16, 270 * 16)
+        # Pfeilspitze am Ende des Bogens (oben rechts)
+        import math
+        a = math.radians(60)
+        ex = arc.center().x() + arc.width() / 2 * math.cos(a)
+        ey = arc.center().y() - arc.height() / 2 * math.sin(a)
+        s = w * .2
+        p.drawLine(QPointF(ex, ey), QPointF(ex - s * 1.05, ey - s * .15))
+        p.drawLine(QPointF(ex, ey), QPointF(ex + s * .2, ey - s * 1.0))
     elif name == "sliders":
         for i, kx in enumerate((.32, .68, .45)):
             yy = y + h * (.22 + .28 * i)

@@ -75,6 +75,7 @@ class Controller(QObject):
         self.timers_page.pause_requested.connect(self.pause)
         self.timers_page.resume_requested.connect(self.resume)
         self.timers_page.compact_requested.connect(self.enter_compact)
+        self.timers_page.replan_requested.connect(self.replan)
         self.settings_page.changed.connect(self.settings_changed)
         self.settings_page.theme_changed.connect(self.apply_theme_live)
         self.settings_page.autostart_changed.connect(self.set_autostart)
@@ -133,14 +134,15 @@ class Controller(QObject):
         """Willkommens-Bildschirm mit den wichtigsten Funktionen (beim ersten Start automatisch)."""
         from .welcome import WelcomeDialog
         parent = self.window if self.window.isVisible() else None
-        dlg = WelcomeDialog(parent)
+        dlg = WelcomeDialog(parent, self.settings.welcome_shown)
         dlg.winId()
         winutil.set_dark_titlebar(int(dlg.winId()), bool(theme.P.get("is_dark")))
         if parent is None:
             dlg.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         dlg.exec()
-        if not self.settings.welcome_shown:
-            self.settings.welcome_shown = True
+        # Erscheint bei jedem Start, bis „Beim nächsten Start nicht mehr anzeigen“ gesetzt ist
+        if dlg.dont_show.isChecked() != self.settings.welcome_shown:
+            self.settings.welcome_shown = dlg.dont_show.isChecked()
             self.save_config()
 
     # ------------------------------------------------------------------ Theme
@@ -615,6 +617,16 @@ class Controller(QObject):
         self.save_config()
         self.save_state()
         self.tick()
+
+    def replan(self):
+        """Knopf „Zeitplan aktualisieren“: Raster aus Startzeit/Intervall/aktiver Zeit ab jetzt anwenden."""
+        n = self.sched.realign(datetime.now())
+        self.save_state()
+        self.tick()
+        hint = self.timers_page.hint
+        hint.setText(f"Zeitplan aktualisiert · {n} {'Erinnerung' if n == 1 else 'Erinnerungen'} neu ausgerichtet."
+                     if n else "Zeitplan aktualisiert · alles war schon passend.")
+        QTimer.singleShot(6000, lambda: (self.timers_page.__setattr__("_replan_state", None), self.tick()))
 
     # ------------------------------------------------------------------ Einstellungen
     def settings_changed(self):

@@ -186,6 +186,7 @@ class TimersPage(QWidget):
     pause_requested = Signal(int)      # Minuten; -1 = bis morgen
     resume_requested = Signal()
     compact_requested = Signal()
+    replan_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -311,10 +312,37 @@ class TimersPage(QWidget):
         root.addWidget(self.empty)
         self.hint = label("Tipp: Unterschiedliche Startzeiten verhindern, dass alle Erinnerungen "
                           "gleichzeitig kommen.", "faint", wrap=True)
-        root.addWidget(self.hint)
+        foot = QHBoxLayout()
+        foot.setSpacing(12)
+        foot.addWidget(self.hint, 1)
+        self.replan_btn = QPushButton("  Zeitplan aktualisieren")
+        self.replan_btn.setObjectName("primary")
+        self.replan_btn.setCursor(Qt.PointingHandCursor)
+        self.replan_btn.setIconSize(QSize(16, 16))
+        self.replan_btn.setEnabled(False)
+        self.replan_btn.setToolTip(
+            "Hast du Startzeiten, Intervalle oder aktive Zeiten geändert, richtet dieser Knopf alle\n"
+            "Erinnerungen neu danach aus – schon für heute, ab jetzt.\n"
+            "Offene und bewusst verschobene Erinnerungen bleiben, wie sie sind.")
+        self.replan_btn.clicked.connect(self.replan_requested.emit)
+        foot.addWidget(self.replan_btn, 0, Qt.AlignBottom)
+        root.addLayout(foot)
         root.addStretch(1)
+        self._replan_state = None
+        self._set_replan(False)
         self.cards: dict[str, TimerCard] = {}
         self._paused = False
+
+    def _set_replan(self, on: bool):
+        key = (on, theme.P.get("is_dark"))
+        if key == self._replan_state:
+            return
+        self._replan_state = key
+        self.replan_btn.setEnabled(on)
+        self.replan_btn.setIcon(line_icon("refresh", theme.P["accent_text"] if on else theme.P["faint"], 16))
+        self.hint.setText("Zeiten geändert – mit „Zeitplan aktualisieren“ gilt das neue Raster schon für heute."
+                          if on else "Tipp: Unterschiedliche Startzeiten verhindern, dass alle Erinnerungen "
+                                     "gleichzeitig kommen.")
 
     def _pause_clicked(self):
         if self._paused:
@@ -382,6 +410,7 @@ class TimersPage(QWidget):
                 if w else "Heute keine aktiven Zeiten")
         self.subtitle.setText(when)
         self.timeline.set_state(sched, entries, pauses, now, aways)
+        self._set_replan(bool(getattr(sched, "plan_dirty", False)) and sched.paused_until is None)
         self._update_medal(summary)
         if getattr(self, "_legend_dark", None) != theme.P.get("is_dark"):
             self._legend_dark = theme.P.get("is_dark")
